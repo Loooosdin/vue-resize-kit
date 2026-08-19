@@ -19,6 +19,9 @@ export interface ResizeEvent extends ResizeSize {
   previousSize: ResizeSize | null
   contentRect: DOMRectReadOnly
   entry: ResizeObserverEntry
+  /** 用户请求观察的盒模型。 */
+  requestedBox: ResizeBox
+  /** 本次事件尺寸实际采用的数据来源；与 requestedBox 不同时表示发生了降级。 */
   box: ResizeBox
   isInitial: boolean
 }

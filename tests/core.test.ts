@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { normalizeResizeOptions, observeResize } from '../src/core'
+import { observeResize } from '../src/core'
+import { normalizeResizeOptions } from '../src/core/options'
+import type { ResizeEvent, ResizeHandler, ResizeOptions } from '../src/core'
 import { createEntry, MockResizeObserver, mockObserverCtor } from './helpers/mockResizeObserver'
 
 describe('observeResize', () => {
@@ -32,6 +34,8 @@ describe('observeResize', () => {
         width: 120,
         height: 80,
         previousSize: null,
+        requestedBox: 'content-box',
+        box: 'content-box',
         isInitial: true,
       }),
     )
@@ -73,6 +77,29 @@ describe('observeResize', () => {
     expect(handler).toHaveBeenCalledTimes(2)
     expect(handler.mock.calls[1]![0].previousSize).toEqual(
       expect.objectContaining({ width: 100, height: 100 }),
+    )
+  })
+
+  it('previousSize 只保留上一次交付的尺寸字段', () => {
+    const events: ResizeEvent[] = []
+    observeResize(target, (event) => events.push(event), {
+      observerCtor: mockObserverCtor,
+      scheduler: 'sync',
+    })
+    const observer = MockResizeObserver.instances[0]!
+
+    observer.emit(createEntry(target, 100, 60))
+    observer.emit(createEntry(target, 120, 70))
+    observer.emit(createEntry(target, 140, 80))
+
+    expect(events[2]!.previousSize).toEqual({
+      width: 120,
+      height: 70,
+      inlineSize: 120,
+      blockSize: 70,
+    })
+    expect(Object.keys(events[2]!.previousSize!).sort()).toEqual(
+      ['width', 'height', 'inlineSize', 'blockSize'].sort(),
     )
   })
 
@@ -124,6 +151,56 @@ describe('observeResize', () => {
 
     expect(handler).toHaveBeenCalledTimes(2)
     expect(handler.mock.calls[1]![0].width).toBe(140)
+  })
+
+  it('尺寸回到过滤范围时取消已经失效的调度事件', () => {
+    vi.useFakeTimers()
+
+    const rafHandler = vi.fn()
+    observeResize(target, rafHandler, {
+      observerCtor: mockObserverCtor,
+      scheduler: 'animation-frame',
+      threshold: 10,
+    })
+    const rafObserver = MockResizeObserver.instances[0]!
+    rafObserver.emit(createEntry(target, 100, 100))
+    vi.advanceTimersByTime(16)
+    rafObserver.emit(createEntry(target, 120, 100))
+    rafObserver.emit(createEntry(target, 100, 100))
+    vi.advanceTimersByTime(16)
+    expect(rafHandler).toHaveBeenCalledTimes(1)
+
+    const debounceTarget = document.createElement('div')
+    const debounceHandler = vi.fn()
+    observeResize(debounceTarget, debounceHandler, {
+      observerCtor: mockObserverCtor,
+      scheduler: 'debounce',
+      delay: 50,
+      threshold: 10,
+    })
+    const debounceObserver = MockResizeObserver.instances[1]!
+    debounceObserver.emit(createEntry(debounceTarget, 100, 100))
+    vi.advanceTimersByTime(50)
+    debounceObserver.emit(createEntry(debounceTarget, 120, 100))
+    debounceObserver.emit(createEntry(debounceTarget, 105, 100))
+    vi.advanceTimersByTime(50)
+    expect(debounceHandler).toHaveBeenCalledTimes(1)
+
+    const throttleTarget = document.createElement('div')
+    const throttleHandler = vi.fn()
+    observeResize(throttleTarget, throttleHandler, {
+      observerCtor: mockObserverCtor,
+      scheduler: 'throttle',
+      delay: 100,
+      threshold: 10,
+    })
+    const throttleObserver = MockResizeObserver.instances[2]!
+    throttleObserver.emit(createEntry(throttleTarget, 100, 100))
+    vi.advanceTimersByTime(25)
+    throttleObserver.emit(createEntry(throttleTarget, 120, 100))
+    throttleObserver.emit(createEntry(throttleTarget, 100, 100))
+    vi.advanceTimersByTime(75)
+    expect(throttleHandler).toHaveBeenCalledTimes(1)
   })
 
   it('pause、resume、stop 会清理资源且 stop 不可恢复', () => {
@@ -195,6 +272,56 @@ describe('observeResize', () => {
     )
   })
 
+  it('缺少请求 box 数据时报告 content-box 降级并保持逻辑尺寸正确', () => {
+    target.style.writingMode = 'vertical-rl'
+    const handler = vi.fn()
+    observeResize(target, handler, {
+      observerCtor: mockObserverCtor,
+      scheduler: 'sync',
+      box: 'border-box',
+    })
+    const entry = {
+      ...createEntry(target, 120, 80, 'border-box'),
+      borderBoxSize: [],
+    } satisfies ResizeObserverEntry
+
+    MockResizeObserver.instances[0]!.emit(entry)
+    expect(handler.mock.calls[0]![0]).toEqual(
+      expect.objectContaining({
+        requestedBox: 'border-box',
+        box: 'content-box',
+        width: 120,
+        height: 80,
+        inlineSize: 80,
+        blockSize: 120,
+      }),
+    )
+  })
+
+  it('Observer 不接受 options 时明确回退到 content-box', () => {
+    MockResizeObserver.rejectObserveOptions = true
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const handler = vi.fn()
+    observeResize(target, handler, {
+      observerCtor: mockObserverCtor,
+      scheduler: 'sync',
+      box: 'device-pixel-content-box',
+    })
+
+    const observer = MockResizeObserver.instances[0]!
+    observer.emit(createEntry(target, 100, 50))
+    expect(observer.observed.get(target)).toBeUndefined()
+    expect(handler.mock.calls[0]![0]).toEqual(
+      expect.objectContaining({
+        requestedBox: 'device-pixel-content-box',
+        box: 'content-box',
+        width: 100,
+        height: 50,
+      }),
+    )
+    expect(warning).toHaveBeenCalled()
+  })
+
   it('缺少 ResizeObserver 时返回不可用的空控制器', () => {
     vi.stubGlobal('ResizeObserver', undefined)
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -211,5 +338,32 @@ describe('observeResize', () => {
     expect(normalizeResizeOptions({ threshold: -1, delay: Number.NaN })).toEqual(
       expect.objectContaining({ threshold: 0, delay: 100 }),
     )
+  })
+
+  it('规范化非法枚举和布尔配置', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const options = normalizeResizeOptions({
+      box: 'padding-box',
+      axis: 'inline',
+      scheduler: 'typo',
+      immediate: 'yes',
+      once: 1,
+    } as unknown as ResizeOptions)
+
+    expect(options).toEqual(
+      expect.objectContaining({
+        box: 'content-box',
+        axis: 'both',
+        scheduler: 'animation-frame',
+        immediate: true,
+        once: false,
+      }),
+    )
+    expect(warning).toHaveBeenCalledTimes(5)
+  })
+
+  it('对非法 target 和 handler 同步抛出 TypeError', () => {
+    expect(() => observeResize('not-an-element' as unknown as Element, vi.fn())).toThrow(TypeError)
+    expect(() => observeResize(target, null as unknown as ResizeHandler)).toThrow(TypeError)
   })
 })

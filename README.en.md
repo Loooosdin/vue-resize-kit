@@ -43,6 +43,10 @@ const controller = observeResize(element, ({ width, height }) => {
 controller.stop()
 ```
 
+`ResizeEvent.requestedBox` records the requested observation box, while `ResizeEvent.box`
+reports the actual measurement source. They differ when an older browser or polyfill falls
+back to `content-box`.
+
 See [README.md](./README.md) for the complete Chinese documentation.
 
 ## License

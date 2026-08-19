@@ -42,7 +42,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        vue: ['2.6.14', '2.7.16', '3.2.47', '3']
+        include:
+          - vue: '2.6.14'
+            tests: 'tests/core.test.ts tests/directive.test.ts tests/vue-compatibility.test.ts'
+          - vue: '2.7.16'
+            tests: 'tests/core.test.ts tests/directive.test.ts tests/composable.test.ts tests/vue-compatibility.test.ts'
+          - vue: '3.2.47'
+            tests: 'tests/core.test.ts tests/directive.test.ts tests/composable.test.ts tests/vue-compatibility.test.ts'
+          - vue: '3'
+            tests: 'tests/core.test.ts tests/directive.test.ts tests/composable.test.ts tests/vue-compatibility.test.ts'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -53,4 +61,4 @@ jobs:
           node-version: 22
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm add --save-dev vue@${{ matrix.vue }} --no-lockfile
-      - run: pnpm exec vitest run tests/core.test.ts tests/directive.test.ts
+      - run: pnpm exec vitest run ${{ matrix.tests }}
