@@ -2,6 +2,7 @@ import type { ResizeBox, ResizeObserverConstructor } from '../../src/core'
 
 export class MockResizeObserver {
   static instances: MockResizeObserver[] = []
+  static rejectObserveOptions = false
 
   readonly callback: ResizeObserverCallback
   observed = new Map<Element, ResizeObserverOptions | undefined>()
@@ -13,6 +14,9 @@ export class MockResizeObserver {
   }
 
   observe(target: Element, options?: ResizeObserverOptions): void {
+    if (options && MockResizeObserver.rejectObserveOptions) {
+      throw new TypeError('observe options are not supported')
+    }
     this.observed.set(target, options)
     this.disconnected = false
   }
@@ -32,6 +36,7 @@ export class MockResizeObserver {
 
   static reset(): void {
     MockResizeObserver.instances = []
+    MockResizeObserver.rejectObserveOptions = false
   }
 }
 

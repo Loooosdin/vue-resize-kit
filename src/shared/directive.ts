@@ -1,10 +1,11 @@
-import { normalizeResizeOptions, observeResize } from '../core'
+import { observeResize } from '../core'
 import type {
-  NormalizedResizeOptions,
   ResizeController,
   ResizeHandler,
   ResizeOptions,
 } from '../core'
+import { normalizeResizeOptions } from '../core/options'
+import type { NormalizedResizeOptions } from '../core/types'
 import { warn } from '../core/warn'
 
 export interface ResizeBindingObject extends ResizeOptions {

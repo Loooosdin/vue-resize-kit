@@ -2,6 +2,11 @@ import type { ResizeBox, ResizeSize } from './types'
 
 type BoxSizeValue = ResizeObserverSize | readonly ResizeObserverSize[] | undefined
 
+export interface ExtractedResizeSize extends ResizeSize {
+  /** 本次尺寸实际采用的数据来源。 */
+  box: ResizeBox
+}
+
 function firstBoxSize(value: BoxSizeValue): ResizeObserverSize | undefined {
   if (Array.isArray(value)) return value[0]
   return value as ResizeObserverSize | undefined
@@ -21,7 +26,7 @@ function isVerticalWritingMode(target: Element): boolean {
  * 从原生 entry 提取指定 box 的尺寸。
  * 老浏览器缺少 boxSize 字段时回退到 contentRect，保证 API 仍可使用。
  */
-export function extractResizeSize(entry: ResizeObserverEntry, box: ResizeBox): ResizeSize {
+export function extractResizeSize(entry: ResizeObserverEntry, box: ResizeBox): ExtractedResizeSize {
   const boxSize =
     box === 'border-box'
       ? firstBoxSize(entry.borderBoxSize)
@@ -30,11 +35,15 @@ export function extractResizeSize(entry: ResizeObserverEntry, box: ResizeBox): R
         : firstBoxSize(entry.contentBoxSize)
 
   if (!boxSize) {
+    const vertical = isVerticalWritingMode(entry.target)
+    const width = entry.contentRect.width
+    const height = entry.contentRect.height
     return {
-      width: entry.contentRect.width,
-      height: entry.contentRect.height,
-      inlineSize: entry.contentRect.width,
-      blockSize: entry.contentRect.height,
+      width,
+      height,
+      inlineSize: vertical ? height : width,
+      blockSize: vertical ? width : height,
+      box: 'content-box',
     }
   }
 
@@ -47,5 +56,6 @@ export function extractResizeSize(entry: ResizeObserverEntry, box: ResizeBox): R
     height: vertical ? inlineSize : blockSize,
     inlineSize,
     blockSize,
+    box,
   }
 }

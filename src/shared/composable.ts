@@ -1,5 +1,7 @@
 import { observeResize } from '../core'
 import type { ResizeController, ResizeEvent, ResizeHandler, ResizeOptions } from '../core'
+import { isElement } from '../core/element'
+import { warn } from '../core/warn'
 
 export interface RefLike<T> {
   value: T
@@ -43,13 +45,25 @@ export interface UseResizeObserver {
   ): UseResizeObserverReturn
 }
 
-function isRefLike(value: ResizeTarget): value is RefLike<Element | null | undefined> {
-  return typeof value === 'object' && value !== null && 'value' in value
+function resolveTarget(target: ResizeTarget): Element | null {
+  // DOM 表单元素自身也有 value 属性，因此必须优先识别 Element。
+  if (isElement(target)) return target
+  if (typeof target !== 'object' || target === null || !('value' in target)) {
+    warn('useResizeObserver 的 target 必须是 Element 或包含 Element 的 ref。')
+    return null
+  }
+
+  const value = target.value
+  if (value == null) return null
+  if (isElement(value)) return value
+
+  warn('useResizeObserver 的 target ref 当前值不是 Element，已跳过观察。')
+  return null
 }
 
-function resolveTarget(target: ResizeTarget): Element | null {
-  const value = isRefLike(target) ? target.value : target
-  return value ?? null
+function resolveSupport(options: ResizeOptions): boolean {
+  if (typeof options.observerCtor === 'function') return true
+  return typeof (globalThis as typeof globalThis & { ResizeObserver?: unknown }).ResizeObserver === 'function'
 }
 
 function assertCompositionApi(runtime: Partial<VueCompositionRuntime>): asserts runtime is VueCompositionRuntime {
@@ -75,11 +89,18 @@ export function createUseResizeObserver(runtimeInput: Partial<VueCompositionRunt
     const height = runtime.ref<number | undefined>(undefined)
     const event = runtime.shallowRef<ResizeEvent | null>(null)
     const isActive = runtime.ref(false)
-    const isSupported = runtime.ref(false)
+    const isSupported = runtime.ref(resolveSupport(options))
 
     let controller: ResizeController | null = null
+    let currentTarget: Element | null = null
     let stopped = false
     let manuallyPaused = false
+
+    const resetMeasurement = () => {
+      width.value = undefined
+      height.value = undefined
+      event.value = null
+    }
 
     const cleanupController = () => {
       controller?.stop()
@@ -88,7 +109,10 @@ export function createUseResizeObserver(runtimeInput: Partial<VueCompositionRunt
     }
 
     const attach = (element: Element | null) => {
+      const targetChanged = element !== currentTarget
       cleanupController()
+      currentTarget = element
+      if (targetChanged) resetMeasurement()
       if (!element || stopped) return
 
       controller = observeResize(

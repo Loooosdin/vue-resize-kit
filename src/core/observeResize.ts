@@ -1,4 +1,5 @@
 import { normalizeResizeOptions } from './options'
+import { isElement } from './element'
 import { extractResizeSize } from './size'
 import type {
   NormalizedResizeOptions,
@@ -25,7 +26,12 @@ function resolveObserverConstructor(options: NormalizedResizeOptions): ResizeObs
 }
 
 function cloneSize(size: ResizeSize): ResizeSize {
-  return { ...size }
+  return {
+    width: size.width,
+    height: size.height,
+    inlineSize: size.inlineSize,
+    blockSize: size.blockSize,
+  }
 }
 
 function reachesThreshold(
@@ -49,6 +55,13 @@ export function observeResize(
   handler: ResizeHandler,
   userOptions: ResizeOptions = {},
 ): ResizeController {
+  if (!isElement(target)) {
+    throw new TypeError('[vue-resize-kit] observeResize 的 target 必须是 DOM Element。')
+  }
+  if (typeof handler !== 'function') {
+    throw new TypeError('[vue-resize-kit] observeResize 的 handler 必须是函数。')
+  }
+
   const options = normalizeResizeOptions(userOptions)
   const ObserverCtor = resolveObserverConstructor(options)
   const supported = typeof ObserverCtor === 'function'
@@ -63,6 +76,7 @@ export function observeResize(
   let animationFrameId: number | null = null
   let timerId: TimerId | null = null
   let lastThrottleTime = 0
+  let observedBox = options.box
 
   function cancelPending(): void {
     const runtime = globalThis as typeof globalThis & AnimationFrameRuntime
@@ -162,7 +176,8 @@ export function observeResize(
     const entry = entries.find((item) => item.target === target)
     if (!entry || !active || stopped) return
 
-    const size = extractResizeSize(entry, options.box)
+    const extracted = extractResizeSize(entry, observedBox)
+    const { box, ...size } = extracted
     if (awaitingInitialDelivery && !options.immediate) {
       comparisonSize = cloneSize(size)
       awaitingInitialDelivery = false
@@ -170,16 +185,20 @@ export function observeResize(
     }
 
     if (!awaitingInitialDelivery && comparisonSize && !reachesThreshold(comparisonSize, size, options)) {
+      // 最新尺寸已回到过滤范围内时，之前排队的尺寸已经失效。
+      if (pendingEvent) cancelPending()
       return
     }
 
     schedule({
       ...size,
       target,
-      previousSize: lastDeliveredSize ? cloneSize(lastDeliveredSize) : null,
+      // previousSize 在真正交付时写入，确保它始终对应上一次已交付事件。
+      previousSize: null,
       contentRect: entry.contentRect,
       entry,
-      box: options.box,
+      requestedBox: options.box,
+      box,
       isInitial: awaitingInitialDelivery,
     })
   }
@@ -190,12 +209,14 @@ export function observeResize(
     awaitingInitialDelivery = true
     comparisonSize = null
     lastThrottleTime = 0
+    observedBox = options.box
     observer = new ObserverCtor!(handleEntries)
 
     try {
       observer.observe(target, { box: options.box })
     } catch {
       // 某些旧 polyfill 不接受 observe options，退化为 content-box 监听。
+      observedBox = 'content-box'
       observer.observe(target)
       warn(`当前 ResizeObserver 实现不支持 box="${options.box}"，已回退到默认观察模式。`)
     }

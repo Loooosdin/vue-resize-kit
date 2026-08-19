@@ -143,7 +143,7 @@ const { width, height, event, isActive, pause, resume, stop } = useResizeObserve
 )
 ```
 
-当目标 ref 从空值变为元素、切换元素或清空时，Composable 会自动切换并清理观察关系。
+当目标 ref 从空值变为元素、切换元素或清空时，Composable 会自动切换并清理观察关系。目标改变时，旧目标对应的 `width`、`height` 和 `event` 会立即重置，避免在新目标首次通知前读取到旧尺寸。`isSupported` 只表示当前环境或注入的构造器是否支持 ResizeObserver，与 target 当前是否为空无关。
 
 ## 配置项
 
@@ -151,7 +151,7 @@ const { width, height, event, isActive, pause, resume, stop } = useResizeObserve
 | --- | --- | --- | --- |
 | `immediate` | `boolean` | `true` | 开始或恢复观察后，是否把元素当前尺寸作为首次事件交付；关闭时，首次通知只用于建立比较基线。 |
 | `disabled` | `boolean` | `false` | 是否以暂停状态创建 Controller；Vue 指令中可以响应式切换，Core API 中可使用 `resume()` 开始观察。 |
-| `box` | `ResizeBox` | `content-box` | 指定监听内容盒、边框盒或设备像素内容盒；同时决定事件中归一化尺寸的数据来源。 |
+| `box` | `ResizeBox` | `content-box` | 请求监听内容盒、边框盒或设备像素内容盒；若运行环境不支持，事件会明确报告实际数据来源。 |
 | `axis` | `width \| height \| both` | `both` | 指定哪些物理尺寸参与变化过滤；不会删除事件中的其他尺寸字段。 |
 | `threshold` | `number` | `0` | 相对上一次已交付尺寸需要达到的最小像素差；小变化会累计，不会移动比较基线。 |
 | `scheduler` | `sync \| animation-frame \| debounce \| throttle` | `animation-frame` | 控制事件交付时机；可同步交付、合并到下一帧、等待变化停止或按固定频率限流。 |
@@ -189,7 +189,7 @@ const { width, height, event, isActive, pause, resume, stop } = useResizeObserve
 | `border-box` | 内容、padding 和 border 组成的边框盒 | 面板、卡片、可拖拽容器的实际占位尺寸 |
 | `device-pixel-content-box` | 以设备像素表示的内容区域 | 高清 Canvas、像素级绘制；需要浏览器支持 |
 
-事件中的 `width/height` 会根据所选 box 和 CSS 书写模式归一化为物理尺寸，`inlineSize/blockSize` 保留原生逻辑尺寸。若注入的旧 polyfill 不接受 `observe(target, { box })`，库会回退到默认观察模式并在开发环境提示。
+事件中的 `width/height` 会根据实际可用的 box 和 CSS 书写模式归一化为物理尺寸，`inlineSize/blockSize` 保留对应逻辑尺寸。`requestedBox` 表示请求值，`box` 表示本次尺寸的实际数据来源；两者不同时说明发生了降级。若注入的旧 polyfill 不接受 `observe(target, { box })`，库会回退到 `content-box` 并在开发环境提示。
 
 ### `axis` 与 `threshold`
 
@@ -264,12 +264,13 @@ interface ResizeEvent {
   previousSize: ResizeSize | null
   contentRect: DOMRectReadOnly
   entry: ResizeObserverEntry
+  requestedBox: ResizeBox
   box: ResizeBox
   isInitial: boolean
 }
 ```
 
-`previousSize` 始终是上一次已经交付给业务回调的尺寸。`width/height` 是所选 box 归一化后的物理尺寸，`inlineSize/blockSize` 保留 CSS 书写模式对应的逻辑尺寸。
+`previousSize` 始终是上一次已经交付给业务回调的纯尺寸对象，只包含 `width`、`height`、`inlineSize` 和 `blockSize`。`width/height` 是实际 box 归一化后的物理尺寸，`inlineSize/blockSize` 保留 CSS 书写模式对应的逻辑尺寸。`requestedBox !== box` 时表示浏览器或 polyfill 已降级到其他数据来源。
 
 ## SSR 与 polyfill
 
