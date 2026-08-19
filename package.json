@@ -1,0 +1,79 @@
+{
+  "name": "vue-resize-kit",
+  "version": "0.1.0",
+  "description": "A lightweight ResizeObserver toolkit for Vue 2 and Vue 3.",
+  "keywords": [
+    "vue",
+    "vue2",
+    "vue3",
+    "resize-observer",
+    "directive",
+    "composable"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "main": "./dist/core.cjs",
+  "module": "./dist/core.js",
+  "types": "./dist/core.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs"
+    },
+    "./vue2": {
+      "types": "./dist/vue2.d.ts",
+      "import": "./dist/vue2.js",
+      "require": "./dist/vue2.cjs"
+    },
+    "./vue3": {
+      "types": "./dist/vue3.d.ts",
+      "import": "./dist/vue3.js",
+      "require": "./dist/vue3.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:browser": "playwright test",
+    "size": "node scripts/check-size.mjs",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "peerDependencies": {
+    "vue": "^2.6.14 || ^2.7.0 || >=3.2.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0",
+    "@types/node": "^22.15.0",
+    "jsdom": "^26.1.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.0",
+    "vue": "^3.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "pnpm@11.19.0"
+}
